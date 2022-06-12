@@ -1,0 +1,18 @@
+[package]
+name = "ms5837"
+version = "0.1.0"
+edition = "2021"
+description = "A driver for the MS5837 pressure/temperature sensor from Texas Instruments."
+license = "MIT"
+authors = ["Nathaniel Brough"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+embedded-hal = "0.2.7"
+
+[build-dependencies]
+cc = "1.0"
+
+[dev-dependencies]
+embedded-hal-mock = "0.8.0"
