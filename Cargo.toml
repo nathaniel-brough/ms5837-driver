@@ -1,10 +1,11 @@
 [package]
 name = "ms5837"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "A driver for the MS5837 pressure/temperature sensor from Texas Instruments."
 license = "MIT"
 authors = ["Nathaniel Brough"]
+repository = "https://github.com/silvergasp/ms5837-driver"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
