@@ -1,0 +1,32 @@
+[package]
+name = "ms5837-fuzz"
+version = "0.0.0"
+authors = ["Automatically generated"]
+publish = false
+edition = "2018"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+embedded-hal-fuzz = "0.1.0"
+
+[dependencies.ms5837]
+path = ".."
+
+# Prevent this from interfering with workspaces
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "init"
+path = "fuzz_targets/init.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "read"
+path = "fuzz_targets/read.rs"
+test = false
+doc = false
