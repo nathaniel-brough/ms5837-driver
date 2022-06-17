@@ -1,32 +1,32 @@
-/// # Getting started
-///
-/// A platform agnostic driver for the [MS5837](https://www.te.com/commerce/DocumentDelivery/DDEController?Action=showdoc&DocId=Data+Sheet%7FMS5837-30BA%7FB1%7Fpdf%7FEnglish%7FENG_DS_MS5837-30BA_B1.pdf%7FCAT-BLPS0017#:~:text=The%20MS5837%2D30BA%20is%20a,a%20resolution%20of%200.2%20cm.)
-/// from Texas Instruments.
-///
-/// This drivers supports reading the temperature/pressure from the on-chip ADC.
-///
-/// ## Example
-/// ```rust
-/// # // NOTE: Use real i2c instance for your app.
-/// # use embedded_hal_mock::i2c::{Mock as I2cMock, Transaction as I2cTransaction};
-/// # let i2c = I2cMock::new(&[I2cTransaction::write_read(0x76, vec![0x1E], vec![]),
-/// #     I2cTransaction::write_read(0x76, vec![0xA0], vec![0x6F, 0xA6]),
-/// #     I2cTransaction::write_read(0x76, vec![0xA2], vec![0x8E, 0x00]),
-/// #     I2cTransaction::write_read(0x76, vec![0xA4], vec![0x4F, 0x68]),
-/// #     I2cTransaction::write_read(0x76, vec![0xA6], vec![0x57, 0x52]),
-/// #     I2cTransaction::write_read(0x76, vec![0xA8], vec![0x66, 0x22]),
-/// #     I2cTransaction::write_read(0x76, vec![0xAA], vec![0x66, 0x22]),
-/// #     I2cTransaction::write_read(0x76, vec![0xAC], vec![0x66, 0x22]),
-/// #     I2cTransaction::write_read(0x76, vec![0b0101_1000], vec![]),
-/// #     I2cTransaction::write_read(0x76, vec![0x00], vec![0x67,0xFE,0xB6]),
-/// #     I2cTransaction::write_read(0x76, vec![0b0100_1000], vec![]),
-/// #     I2cTransaction::write_read(0x76, vec![0x00], vec![0x4B,0xA7,0xE3]),
-/// # ]);
-/// use ms5837::OverSamplingRatio;
-/// let pressure_sensor = ms5837::new(i2c);
-/// let mut pressure_sensor = pressure_sensor.init().unwrap();
-/// println!("{:?}", pressure_sensor.read_temperature_and_pressure(OverSamplingRatio::R4096).unwrap());
-/// ```
+//! # Getting started
+//!
+//! A platform agnostic driver for the [MS5837](https://www.te.com/commerce/DocumentDelivery/DDEController?Action=showdoc&DocId=Data+Sheet%7FMS5837-30BA%7FB1%7Fpdf%7FEnglish%7FENG_DS_MS5837-30BA_B1.pdf%7FCAT-BLPS0017#:~:text=The%20MS5837%2D30BA%20is%20a,a%20resolution%20of%200.2%20cm.)
+//! from Texas Instruments.
+//!
+//! This drivers supports reading the temperature/pressure from the on-chip ADC.
+//!
+//! ## Example
+//! ```rust
+//! # // NOTE: Use real i2c instance for your app.
+//! # use embedded_hal_mock::i2c::{Mock as I2cMock, Transaction as I2cTransaction};
+//! # let i2c = I2cMock::new(&[I2cTransaction::write_read(0x76, vec![0x1E], vec![]),
+//! #     I2cTransaction::write_read(0x76, vec![0xA0], vec![0x6F, 0xA6]),
+//! #     I2cTransaction::write_read(0x76, vec![0xA2], vec![0x8E, 0x00]),
+//! #     I2cTransaction::write_read(0x76, vec![0xA4], vec![0x4F, 0x68]),
+//! #     I2cTransaction::write_read(0x76, vec![0xA6], vec![0x57, 0x52]),
+//! #     I2cTransaction::write_read(0x76, vec![0xA8], vec![0x66, 0x22]),
+//! #     I2cTransaction::write_read(0x76, vec![0xAA], vec![0x66, 0x22]),
+//! #     I2cTransaction::write_read(0x76, vec![0xAC], vec![0x66, 0x22]),
+//! #     I2cTransaction::write_read(0x76, vec![0b0101_1000], vec![]),
+//! #     I2cTransaction::write_read(0x76, vec![0x00], vec![0x67,0xFE,0xB6]),
+//! #     I2cTransaction::write_read(0x76, vec![0b0100_1000], vec![]),
+//! #     I2cTransaction::write_read(0x76, vec![0x00], vec![0x4B,0xA7,0xE3]),
+//! # ]);
+//! use ms5837::OverSamplingRatio;
+//! let pressure_sensor = ms5837::new(i2c);
+//! let mut pressure_sensor = pressure_sensor.init().unwrap();
+//! println!("{:?}", pressure_sensor.read_temperature_and_pressure(OverSamplingRatio::R4096).unwrap());
+//! ```
 use embedded_hal::blocking::i2c::WriteRead;
 
 #[cfg(test)]
