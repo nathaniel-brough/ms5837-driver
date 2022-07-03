@@ -1,0 +1,50 @@
+name: ClusterFuzzLite batch fuzzing
+on:
+  schedule:
+    - cron: '0 0 * * *'  # Once a day
+permissions: read-all
+jobs:
+  BatchFuzzing:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer:
+        - address
+        - coverage
+        # Override this with the sanitizers you want.
+        # - undefined
+        # - memory
+    steps:
+    - name: Build Fuzzers (${{ matrix.sanitizer }})
+      id: build
+      uses: google/clusterfuzzlite/actions/build_fuzzers@v1
+      with:
+        language: c++
+        sanitizer: ${{ matrix.sanitizer }}
+    - name: Run Fuzzers (${{ matrix.sanitizer }})
+      id: run
+      uses: google/clusterfuzzlite/actions/run_fuzzers@v1
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        fuzz-seconds: 3600
+        mode: 'batch'
+        sanitizer: ${{ matrix.sanitizer }}
+        storage-repo: https://${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/silvergasp/fuzz_corpus.git
+
+  Pruning:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Build Fuzzers
+      id: build
+      uses: google/clusterfuzzlite/actions/build_fuzzers@v1
+      with:
+        language: c++
+    - name: Run Fuzzers
+      id: run
+      uses: google/clusterfuzzlite/actions/run_fuzzers@v1
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        fuzz-seconds: 600
+        mode: 'prune'
+        storage-repo: https://${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/silvergasp/fuzz_corpus.git
