@@ -26,9 +26,9 @@ dependencies = [
 
 [[package]]
 name = "embedded-hal-fuzz"
-version = "0.1.0"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eee644648736b8eb98fc1e1fc474a929491ee2df338112c64f9bc722efd6268f"
+checksum = "388d6cffbb18e088628c806660f3f249c255c2101794c6a38e5322ed22aa3a5a"
 dependencies = [
  "embedded-hal",
  "nb 1.0.0",
