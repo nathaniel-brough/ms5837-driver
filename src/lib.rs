@@ -27,6 +27,13 @@
 //! let mut pressure_sensor = pressure_sensor.init().unwrap();
 //! println!("{:?}", pressure_sensor.read_temperature_and_pressure(OverSamplingRatio::R4096).unwrap());
 //! ```
+
+#![no_std]
+
+#[cfg(test)]
+#[macro_use]
+extern crate std;
+
 use embedded_hal::blocking::i2c::WriteRead;
 
 #[cfg(test)]
