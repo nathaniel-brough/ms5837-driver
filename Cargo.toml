@@ -9,6 +9,10 @@ repository = "https://github.com/silvergasp/ms5837-driver"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+
+[package.metadata.commits]
+defaults = true
+
 [dependencies]
 embedded-hal = "0.2.7"
 
