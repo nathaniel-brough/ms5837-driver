@@ -53,13 +53,29 @@ mod c_implementation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use embedded_hal_mock::i2c::{Mock as I2cMock, Transaction as I2cTransaction};
+    use embedded_hal_mock::{
+        i2c::{Mock as I2cMock, Transaction as I2cTransaction},
+        MockError,
+    };
+    use std::io::ErrorKind;
 
     #[test]
     fn reset() {
         let i2c = I2cMock::new(&[I2cTransaction::write_read(I2C_ADDRESS, vec![0x1E], vec![])]);
         let mut ms5837 = new(i2c);
         ms5837.reset().unwrap();
+        let mut i2c = ms5837.release();
+        // Finalise expectations
+        i2c.done();
+
+        // Reset with error.
+        let i2c = I2cMock::new(
+            &[I2cTransaction::write_read(I2C_ADDRESS, vec![0x1E], vec![])
+                .with_error(MockError::Io(ErrorKind::Other))],
+        );
+        let mut ms5837 = new(i2c);
+
+        ms5837.reset().unwrap_err();
         let mut i2c = ms5837.release();
         // Finalise expectations
         i2c.done();
@@ -197,7 +213,7 @@ fn crc4(buffer: &[u16]) -> u8 {
 }
 
 /// A catch all error for this driver
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum SensorError<E> {
     PromCrcMismatch { got: u8, expected: u8 },
     I2cError(E),
@@ -373,14 +389,14 @@ impl<I2C: I2cMarker> Uninitialised<I2C> {
     /// let pressure_sensor = ms5837::new(i2c);
     /// let pressure_sensor = pressure_sensor.init();
     /// ```
-    pub fn init(mut self) -> Result<Initialised<I2C>, (I2C, SensorError<I2C::Error>)> {
+    pub fn init(mut self) -> Result<Initialised<I2C>, SensorError<I2C::Error>> {
         if let Err(e) = self.reset() {
-            return Err((self.i2c, e));
+            return Err(e);
         }
 
         let calibration_data = match self.read_calibration_data() {
             Ok(calibration_data) => calibration_data,
-            Err(e) => return Err((self.i2c, e)),
+            Err(e) => return Err(e),
         };
 
         Ok(Initialised {
