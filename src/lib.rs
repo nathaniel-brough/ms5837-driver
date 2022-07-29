@@ -25,7 +25,12 @@
 //! use ms5837::OverSamplingRatio;
 //! let pressure_sensor = ms5837::new(i2c);
 //! let mut pressure_sensor = pressure_sensor.init().unwrap();
-//! println!("{:?}", pressure_sensor.read_temperature_and_pressure(OverSamplingRatio::R4096).unwrap());
+//! println!(
+//!     "{:?}",
+//!     pressure_sensor
+//!         .read_temperature_and_pressure(OverSamplingRatio::R4096)
+//!         .unwrap()
+//! );
 //! ```
 
 #![no_std]
@@ -528,7 +533,12 @@ impl<I2C: I2cMarker> Initialised<I2C> {
     /// use ms5837::OverSamplingRatio;
     /// let pressure_sensor = ms5837::new(i2c);
     /// let mut pressure_sensor = pressure_sensor.init().unwrap();
-    /// println!("{:?}", pressure_sensor.read_temperature_and_pressure(OverSamplingRatio::R4096).unwrap());
+    /// println!(
+    ///     "{:?}",
+    ///     pressure_sensor
+    ///         .read_temperature_and_pressure(OverSamplingRatio::R4096)
+    ///         .unwrap()
+    /// );
     /// ```
     pub fn read_temperature_and_pressure(
         &mut self,
@@ -565,7 +575,12 @@ impl<I2C: I2cMarker> Initialised<I2C> {
     /// use ms5837::OverSamplingRatio;
     /// let pressure_sensor = ms5837::new(i2c);
     /// let mut pressure_sensor = pressure_sensor.init().unwrap();
-    /// println!("{:?}", pressure_sensor.read_temperature(OverSamplingRatio::R4096).unwrap());
+    /// println!(
+    ///     "{:?}",
+    ///     pressure_sensor
+    ///         .read_temperature(OverSamplingRatio::R4096)
+    ///         .unwrap()
+    /// );
     /// ```
     pub fn read_temperature(
         &mut self,
