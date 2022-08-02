@@ -547,34 +547,73 @@ impl<I2C: I2cMarker, D: DelayUs<u32>> Initialised<I2C, D> {
     // Normalises raw temperature and pressure readings and converts it into a
     // pair of pressure and temperature readings in mbar and deg C respectively.
     fn normalise_raw_measurement(&self, temperature: u32, pressure: u32) -> TemperaturePressure {
-        let temperature = temperature as i64;
-        let pressure = pressure as i64;
+        let adc_temperature = temperature as i64;
+        let adc_pressure = pressure as i64;
+        let FactoryCalibrationData {
+            pressure_sensitivity,
+            pressure_offset,
+            temperature_coefficient_of_pressure_sensitivty,
+            temperature_coefficient_of_pressure_offset,
+            reference_temperature,
+            temperature_coefficient_of_temperature,
+        } = self.calibration_data;
+        let (
+            pressure_sensitivity,
+            pressure_offset,
+            temperature_coefficient_of_pressure_sensitivty,
+            temperature_coefficient_of_pressure_offset,
+            reference_temperature,
+            temperature_coefficient_of_temperature,
+        ): (i64, i64, i64, i64, i64, i64) = (
+            pressure_sensitivity.into(),
+            pressure_offset.into(),
+            temperature_coefficient_of_pressure_sensitivty.into(),
+            temperature_coefficient_of_pressure_offset.into(),
+            reference_temperature.into(),
+            temperature_coefficient_of_temperature.into(),
+        );
 
-        let d_temperature: i64 =
-            temperature - (self.calibration_data.reference_temperature as i64) * 2i64.pow(8);
+        let dt = adc_temperature - (reference_temperature << 8);
 
-        let temperature = 2000
-            + d_temperature * (self.calibration_data.temperature_coefficient_of_temperature as i64)
-                / 2i64.pow(23);
+        // Actual temperature = 2000 + dT * temperature_sensitivity
+        let temperature = 2000 + (dt * (temperature_coefficient_of_temperature >> 23));
+        let t2;
+        let mut offset2;
+        let mut sensitivity2;
 
-        let temperature_offset = (self.calibration_data.pressure_offset as i64) * 2i64.pow(16)
-            + (self
-                .calibration_data
-                .temperature_coefficient_of_pressure_offset as i64)
-                * (d_temperature as i64)
-                / 2i64.pow(7);
-        let temperature_sensitivity = (self.calibration_data.pressure_sensitivity as i64)
-            * 2i64.pow(15)
-            + (self
-                .calibration_data
-                .temperature_coefficient_of_pressure_sensitivity as i64)
-                * (d_temperature as i64)
-                / 2i64.pow(8);
-        let pressure = (pressure as i64) * temperature_sensitivity - temperature_offset;
+        // Second order temperature compensation
+        if temperature < 2000 {
+            t2 = (3 * dt.pow(2)) >> 33;
+            offset2 = 3 * (temperature - 2000).pow(2) / 2;
+            sensitivity2 = 5 * (temperature - 2000).pow(2) / 8;
+
+            if temperature < -1500 {
+                offset2 += 7 * (temperature + 1500).pow(2);
+                sensitivity2 += 4 * (temperature + 1500).pow(2);
+            }
+        } else {
+            t2 = (2 * dt.pow(2)) >> 37;
+            offset2 = (temperature - 2000).pow(2) >> 4;
+            sensitivity2 = 0;
+        }
+
+        // OFF = OFF_T1 + TCO * dT
+        let mut offset =
+            (pressure_offset << 16) + ((temperature_coefficient_of_pressure_offset * dt) >> 7);
+        offset -= offset2;
+
+        // Sensitivity at actual temperature = SENS_T1 + TCS * dT
+        let mut sensitivty = (pressure_sensitivity << 15)
+            + ((temperature_coefficient_of_pressure_sensitivty * dt) >> 8);
+        sensitivty -= sensitivity2;
+
+        // Temperature compensated pressure = D1 * SENS - OFF
+        let pressure = (((adc_pressure * sensitivty) >> 21) - offset) >> 13;
+        let temperature = temperature - t2;
 
         TemperaturePressure {
             pressure: (pressure as f32) / 10.0,
-            temperature: (temperature as f32) / 10.0,
+            temperature: (temperature as f32) / 100.0,
         }
     }
 
