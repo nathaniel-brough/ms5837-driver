@@ -9,7 +9,7 @@
 //! ```rust
 //! # // NOTE: Use real i2c instance for your app.
 //! # use embedded_hal_mock::i2c::{Mock as I2cMock, Transaction as I2cTransaction};
-//! # let i2c = I2cMock::new(&[I2cTransaction::write_read(0x76, vec![0x1E], vec![]),
+//! # let i2c = I2cMock::new(&[I2cTransaction::write(0x76, vec![0x1E]),
 //! #     I2cTransaction::write_read(0x76, vec![0xA0], vec![0x6F, 0xA6]),
 //! #     I2cTransaction::write_read(0x76, vec![0xA2], vec![0x8E, 0x00]),
 //! #     I2cTransaction::write_read(0x76, vec![0xA4], vec![0x4F, 0x68]),
@@ -17,13 +17,15 @@
 //! #     I2cTransaction::write_read(0x76, vec![0xA8], vec![0x66, 0x22]),
 //! #     I2cTransaction::write_read(0x76, vec![0xAA], vec![0x66, 0x22]),
 //! #     I2cTransaction::write_read(0x76, vec![0xAC], vec![0x66, 0x22]),
-//! #     I2cTransaction::write_read(0x76, vec![0b0101_1000], vec![]),
+//! #     I2cTransaction::write(0x76, vec![0b0101_1000]),
 //! #     I2cTransaction::write_read(0x76, vec![0x00], vec![0x67,0xFE,0xB6]),
-//! #     I2cTransaction::write_read(0x76, vec![0b0100_1000], vec![]),
+//! #     I2cTransaction::write(0x76, vec![0b0100_1000]),
 //! #     I2cTransaction::write_read(0x76, vec![0x00], vec![0x4B,0xA7,0xE3]),
 //! # ]);
-//! use ms5837::OverSamplingRatio;
-//! let pressure_sensor = ms5837::new(i2c);
+//! use ms5837::{OverSamplingRatio, mock_utils::SleepNop};
+//! // NOTE: You should implement the Sleep trait for this driver to work
+//! // correctly.
+//! let pressure_sensor = ms5837::new(i2c, SleepNop);
 //! let mut pressure_sensor = pressure_sensor.init().unwrap();
 //! println!(
 //!     "{:?}",
@@ -39,7 +41,10 @@
 #[macro_use]
 extern crate std;
 
-use embedded_hal::blocking::i2c::WriteRead;
+use embedded_hal::blocking::{
+    delay::DelayUs,
+    i2c::{Write, WriteRead},
+};
 
 #[cfg(test)]
 mod c_implementation {
@@ -47,6 +52,20 @@ mod c_implementation {
         // C implementation described in the data sheet.
         // This is test only to validate the rust implementation.
         pub fn crc4(buffer: *const u16) -> u8;
+    }
+}
+
+/// Mock utils is a set of tools to aid in testing and documenting you should not
+/// use any of the mocks defined in this module in your release binaries.
+pub mod mock_utils {
+    /// A sleep implementation that does nothing and immediately exists. This is
+    /// useful for testing and fuzzing.
+    pub struct SleepNop;
+
+    impl embedded_hal::blocking::delay::DelayUs<u32> for SleepNop {
+        fn delay_us(&mut self, _us: u32) {
+            // Nop
+        }
     }
 }
 
@@ -59,24 +78,24 @@ mod tests {
     };
     use std::io::ErrorKind;
 
+    pub use mock_utils::SleepNop;
+
     #[test]
     fn reset() {
-        let i2c = I2cMock::new(&[I2cTransaction::write_read(I2C_ADDRESS, vec![0x1E], vec![])]);
-        let mut ms5837 = new(i2c);
+        let i2c = I2cMock::new(&[I2cTransaction::write(I2C_ADDRESS, vec![0x1E])]);
+        let mut ms5837 = new(i2c, SleepNop);
         ms5837.reset().unwrap();
-        let mut i2c = ms5837.release();
+        let (mut i2c, _) = ms5837.release();
         // Finalise expectations
         i2c.done();
 
         // Reset with error.
-        let i2c = I2cMock::new(
-            &[I2cTransaction::write_read(I2C_ADDRESS, vec![0x1E], vec![])
-                .with_error(MockError::Io(ErrorKind::Other))],
-        );
-        let mut ms5837 = new(i2c);
+        let i2c = I2cMock::new(&[I2cTransaction::write(I2C_ADDRESS, vec![0x1E])
+            .with_error(MockError::Io(ErrorKind::Other))]);
+        let mut ms5837 = new(i2c, SleepNop);
 
         ms5837.reset().unwrap_err();
-        let mut i2c = ms5837.release();
+        let (mut i2c, _) = ms5837.release();
         // Finalise expectations
         i2c.done();
     }
@@ -92,20 +111,20 @@ mod tests {
             I2cTransaction::write_read(I2C_ADDRESS, vec![0xAA], vec![0x66, 0x22]),
             I2cTransaction::write_read(I2C_ADDRESS, vec![0xAC], vec![0x66, 0x22]),
         ]);
-        let mut ms5837 = new(i2c);
+        let mut ms5837 = new(i2c, SleepNop);
         let calibration_data = ms5837.read_calibration_data().unwrap();
         assert_eq!(
             calibration_data,
             FactoryCalibrationData {
                 pressure_sensitivity: 0x8E00,
                 pressure_offset: 0x4F68,
-                temperature_coefficient_of_pressure_sensitivity: 0x5752,
+                temperature_coefficient_of_pressure_sensitivty: 0x5752,
                 temperature_coefficient_of_pressure_offset: 0x6622,
                 reference_temperature: 0x6622,
                 temperature_coefficient_of_temperature: 0x6622,
             }
         );
-        let mut i2c = ms5837.release();
+        let (mut i2c, _) = ms5837.release();
         // Finalise expectations
         i2c.done();
     }
@@ -114,7 +133,7 @@ mod tests {
     fn read_raw_pressure() {
         let i2c = I2cMock::new(&[
             // Trigger conversion of Pressure with OSR of 4096.
-            I2cTransaction::write_read(I2C_ADDRESS, vec![0b0100_1000], vec![]),
+            I2cTransaction::write(I2C_ADDRESS, vec![0b0100_1000]),
             // Sample ADC.
             I2cTransaction::write_read(I2C_ADDRESS, vec![0x00], vec![0x12, 0x34, 0x56]),
         ]);
@@ -124,15 +143,16 @@ mod tests {
             calibration_data: FactoryCalibrationData {
                 pressure_sensitivity: 0x8E00,
                 pressure_offset: 0x4F68,
-                temperature_coefficient_of_pressure_sensitivity: 0x5752,
+                temperature_coefficient_of_pressure_sensitivty: 0x5752,
                 temperature_coefficient_of_pressure_offset: 0x6622,
                 reference_temperature: 0x6622,
                 temperature_coefficient_of_temperature: 0x6622,
             },
+            sleep: SleepNop,
         };
         let raw_pressure = ms5837.read_raw_pressure(OverSamplingRatio::R4096).unwrap();
         assert_eq!(raw_pressure, 0x123456);
-        let mut i2c = ms5837.release();
+        let (mut i2c, _) = ms5837.release();
         // Finalise expectations
         i2c.done();
     }
@@ -141,7 +161,7 @@ mod tests {
     fn read_raw_temperature() {
         let i2c = I2cMock::new(&[
             // Trigger conversion of Pressure with OSR of 4096.
-            I2cTransaction::write_read(I2C_ADDRESS, vec![0b0101_1000], vec![]),
+            I2cTransaction::write(I2C_ADDRESS, vec![0b0101_1000]),
             // Sample ADC.
             I2cTransaction::write_read(I2C_ADDRESS, vec![0x00], vec![0x12, 0x34, 0x56]),
         ]);
@@ -151,17 +171,18 @@ mod tests {
             calibration_data: FactoryCalibrationData {
                 pressure_sensitivity: 0x8E00,
                 pressure_offset: 0x4F68,
-                temperature_coefficient_of_pressure_sensitivity: 0x5752,
+                temperature_coefficient_of_pressure_sensitivty: 0x5752,
                 temperature_coefficient_of_pressure_offset: 0x6622,
                 reference_temperature: 0x6622,
                 temperature_coefficient_of_temperature: 0x6622,
             },
+            sleep: SleepNop,
         };
         let raw_temperature = ms5837
             .read_raw_temperature(OverSamplingRatio::R4096)
             .unwrap();
         assert_eq!(raw_temperature, 0x123456);
-        let mut i2c = ms5837.release();
+        let (mut i2c, _) = ms5837.release();
         // Finalise expectations
         i2c.done();
     }
@@ -226,8 +247,12 @@ pub(crate) mod sealed {
 
 pub trait State: sealed::Sealed {}
 
-pub trait I2cMarker: WriteRead {}
-impl<T: WriteRead> I2cMarker for T {}
+pub trait I2cMarker: WriteRead + Write
+where
+    Self: Write<Error = <Self as WriteRead>::Error>,
+{
+}
+impl<T: WriteRead + Write> I2cMarker for T where Self: Write<Error = <Self as WriteRead>::Error> {}
 
 /// Create an uninitialised driver object
 ///
@@ -236,11 +261,14 @@ impl<T: WriteRead> I2cMarker for T {}
 /// ```
 /// // NOTE: Use real i2c instance for your app.
 /// use embedded_hal_mock::i2c::{Mock as I2cMock, Transaction as I2cTransaction};
+/// use ms5837::{OverSamplingRatio, mock_utils::SleepNop};
+/// // NOTE: You should implement the Sleep trait for this driver to work
+/// // correctly.
 /// let i2c = I2cMock::new(&[]);
-/// let pressure_sensor = ms5837::new(i2c);
+/// let pressure_sensor = ms5837::new(i2c, SleepNop);
 /// ```
-pub fn new<I2C: I2cMarker>(i2c: I2C) -> Uninitialised<I2C> {
-    return Uninitialised { i2c };
+pub fn new<I2C: I2cMarker, D: DelayUs<u32>>(i2c: I2C, sleep: D) -> Uninitialised<I2C, D> {
+    return Uninitialised::<I2C, D> { i2c, sleep };
 }
 
 /// The oversampling ratio to use internal to the ADC. This is analogous to taking
@@ -254,12 +282,26 @@ pub enum OverSamplingRatio {
     R4096 = 0x8,
 }
 
+impl OverSamplingRatio {
+    fn conversion_time_us(&self) -> u32 {
+        use OverSamplingRatio::*;
+        match *self {
+            R256 => 600,
+            R512 => 1170,
+            R1024 => 2280,
+            R2048 => 4540,
+            R4096 => 9040,
+        }
+    }
+}
+
 /// The factory calibration data as fetched from the PROM.
 #[derive(PartialEq, Debug)]
 pub struct FactoryCalibrationData {
+    /// Pressure sensitivity
     pressure_sensitivity: u16,
     pressure_offset: u16,
-    temperature_coefficient_of_pressure_sensitivity: u16,
+    temperature_coefficient_of_pressure_sensitivty: u16,
     temperature_coefficient_of_pressure_offset: u16,
     reference_temperature: u16,
     temperature_coefficient_of_temperature: u16,
@@ -289,23 +331,27 @@ impl From<Command> for u8 {
 }
 
 /// An uninitialised ms5837 object.
-pub struct Uninitialised<I2C: I2cMarker> {
+pub struct Uninitialised<I2C: I2cMarker, D: DelayUs<u32>> {
     i2c: I2C,
+    sleep: D,
 }
 
-impl<I2C: I2cMarker> State for Uninitialised<I2C> {}
-impl<I2C: I2cMarker> sealed::Sealed for Uninitialised<I2C> {}
+impl<I2C: I2cMarker, D: DelayUs<u32>> State for Uninitialised<I2C, D> {}
+impl<I2C: I2cMarker, D: DelayUs<u32>> sealed::Sealed for Uninitialised<I2C, D> {}
 
-impl<I2C: I2cMarker> Uninitialised<I2C> {
+impl<I2C: I2cMarker, D: DelayUs<u32>> Uninitialised<I2C, D> {
     /// Reset the ms5837 internal state machine.
-    fn reset(&mut self) -> Result<(), SensorError<I2C::Error>> {
+    fn reset(&mut self) -> Result<(), SensorError<<I2C as WriteRead>::Error>> {
         self.i2c
-            .write_read(I2C_ADDRESS, &[Command::Reset.into()], &mut [])
+            .write(I2C_ADDRESS, &[Command::Reset.into()])
             .map_err(SensorError::I2cError)
     }
 
     /// Read the contents of the PROM.
-    fn read_prom(&mut self, prom_buffer: &mut [u16; 7]) -> Result<(), SensorError<I2C::Error>> {
+    fn read_prom(
+        &mut self,
+        prom_buffer: &mut [u16; 7],
+    ) -> Result<(), SensorError<<I2C as WriteRead>::Error>> {
         let mut prom_address: u8 = 0;
         for entry in prom_buffer.iter_mut() {
             let mut buffer = [0, 0];
@@ -323,7 +369,9 @@ impl<I2C: I2cMarker> Uninitialised<I2C> {
     }
 
     /// Reads and parses the PROM contents into factory calibration data.
-    fn read_calibration_data(&mut self) -> Result<FactoryCalibrationData, SensorError<I2C::Error>> {
+    fn read_calibration_data(
+        &mut self,
+    ) -> Result<FactoryCalibrationData, SensorError<<I2C as WriteRead>::Error>> {
         let mut prom = [0u16; 7];
         self.read_prom(&mut prom)?;
         let expected_crc4 = ((0xF000 & prom[0]) >> 12) as u8;
@@ -339,7 +387,7 @@ impl<I2C: I2cMarker> Uninitialised<I2C> {
         Ok(FactoryCalibrationData {
             pressure_sensitivity: prom[0],
             pressure_offset: prom[1],
-            temperature_coefficient_of_pressure_sensitivity: prom[2],
+            temperature_coefficient_of_pressure_sensitivty: prom[2],
             temperature_coefficient_of_pressure_offset: prom[3],
             reference_temperature: prom[4],
             temperature_coefficient_of_temperature: prom[5],
@@ -353,12 +401,14 @@ impl<I2C: I2cMarker> Uninitialised<I2C> {
     /// ```
     /// // NOTE: Use real i2c instance for your app.
     /// use embedded_hal_mock::i2c::{Mock as I2cMock, Transaction as I2cTransaction};
+    /// // Dummy sleep implementation.
+    /// use ms5837::mock_utils::SleepNop;
     /// let i2c = I2cMock::new(&[]);
-    /// let pressure_sensor = ms5837::new(i2c);
+    /// let pressure_sensor = ms5837::new(i2c, SleepNop);
     /// let i2c = pressure_sensor.release();
     /// ```
-    pub fn release(self) -> I2C {
-        self.i2c
+    pub fn release(self) -> (I2C, D) {
+        (self.i2c, self.sleep)
     }
 
     /// Initialised the pressure sensor.
@@ -377,7 +427,7 @@ impl<I2C: I2cMarker> Uninitialised<I2C> {
     /// ```rust
     /// // NOTE: Use real i2c instance for your app.
     /// # use embedded_hal_mock::i2c::{Mock as I2cMock, Transaction as I2cTransaction};
-    /// # let i2c = I2cMock::new(&[I2cTransaction::write_read(0x76, vec![0x1E], vec![]),
+    /// # let i2c = I2cMock::new(&[I2cTransaction::write(0x76, vec![0x1E]),
     /// #     I2cTransaction::write_read(0x76, vec![0xA0], vec![0x6F, 0xA6]),
     /// #     I2cTransaction::write_read(0x76, vec![0xA2], vec![0x8E, 0x00]),
     /// #     I2cTransaction::write_read(0x76, vec![0xA4], vec![0x4F, 0x68]),
@@ -386,10 +436,11 @@ impl<I2C: I2cMarker> Uninitialised<I2C> {
     /// #     I2cTransaction::write_read(0x76, vec![0xAA], vec![0x66, 0x22]),
     /// #     I2cTransaction::write_read(0x76, vec![0xAC], vec![0x66, 0x22])
     /// # ]);
-    /// let pressure_sensor = ms5837::new(i2c);
+    /// use ms5837::mock_utils::SleepNop;
+    /// let pressure_sensor = ms5837::new(i2c, SleepNop);
     /// let pressure_sensor = pressure_sensor.init();
     /// ```
-    pub fn init(mut self) -> Result<Initialised<I2C>, SensorError<I2C::Error>> {
+    pub fn init(mut self) -> Result<Initialised<I2C, D>, SensorError<<I2C as WriteRead>::Error>> {
         if let Err(e) = self.reset() {
             return Err(e);
         }
@@ -402,18 +453,20 @@ impl<I2C: I2cMarker> Uninitialised<I2C> {
         Ok(Initialised {
             i2c: self.i2c,
             calibration_data,
+            sleep: self.sleep,
         })
     }
 }
 
 /// An initialised ms5837 object.
-pub struct Initialised<I2C: I2cMarker> {
+pub struct Initialised<I2C: I2cMarker, D: DelayUs<u32>> {
     i2c: I2C,
     calibration_data: FactoryCalibrationData,
+    sleep: D,
 }
 
-impl<I2C: I2cMarker> State for Initialised<I2C> {}
-impl<I2C: I2cMarker> sealed::Sealed for Initialised<I2C> {}
+impl<I2C: I2cMarker, D: DelayUs<u32>> State for Initialised<I2C, D> {}
+impl<I2C: I2cMarker, D: DelayUs<u32>> sealed::Sealed for Initialised<I2C, D> {}
 
 /// A group of temperature and pressure samples. These are grouped as pressure
 /// normalisation requires sampling the current temperature.
@@ -423,25 +476,26 @@ pub struct TemperaturePressure {
     pub pressure: f32,
 }
 
-impl<I2C: I2cMarker> Initialised<I2C> {
+impl<I2C: I2cMarker, D: DelayUs<u32>> Initialised<I2C, D> {
     /// Release the i2c handle consuming the driver.
-    pub fn release(self) -> I2C {
-        self.i2c
+    pub fn release(self) -> (I2C, D) {
+        (self.i2c, self.sleep)
     }
 
     // Starts conversion and reads raw temperature from the sensor.
     fn read_raw_temperature(
         &mut self,
         over_sampling_ratio: OverSamplingRatio,
-    ) -> Result<u32, SensorError<I2C::Error>> {
+    ) -> Result<u32, SensorError<<I2C as WriteRead>::Error>> {
         let mut raw_temperature_buffer = [0u8; 4];
         self.i2c
-            .write_read(
+            .write(
                 I2C_ADDRESS,
                 &[Command::ConvertD2(over_sampling_ratio).into()],
-                &mut [],
             )
             .map_err(SensorError::I2cError)?;
+        self.sleep
+            .delay_us(over_sampling_ratio.conversion_time_us());
         self.i2c
             .write_read(
                 I2C_ADDRESS,
@@ -457,24 +511,25 @@ impl<I2C: I2cMarker> Initialised<I2C> {
     fn read_raw_pressure(
         &mut self,
         over_sampling_ratio: OverSamplingRatio,
-    ) -> Result<u32, SensorError<I2C::Error>> {
-        let mut raw_temperature_buffer = [0u8; 4];
+    ) -> Result<u32, SensorError<<I2C as WriteRead>::Error>> {
+        let mut raw_pressure_buffer = [0u8; 4];
         self.i2c
-            .write_read(
+            .write(
                 I2C_ADDRESS,
                 &[Command::ConvertD1(over_sampling_ratio).into()],
-                &mut [],
             )
             .map_err(SensorError::I2cError)?;
+        self.sleep
+            .delay_us(over_sampling_ratio.conversion_time_us());
         self.i2c
             .write_read(
                 I2C_ADDRESS,
                 &[Command::AdcRead.into()],
                 // ADC is 24bit but we are storing in u32.
-                &mut raw_temperature_buffer[1..],
+                &mut raw_pressure_buffer[1..],
             )
             .map_err(SensorError::I2cError)?;
-        Ok(u32::from_be_bytes(raw_temperature_buffer))
+        Ok(u32::from_be_bytes(raw_pressure_buffer))
     }
 
     // Normalises the raw temperature into degrees C.
@@ -533,7 +588,7 @@ impl<I2C: I2cMarker> Initialised<I2C> {
     /// ```rust
     /// # // NOTE: Use real i2c instance for your app.
     /// # use embedded_hal_mock::i2c::{Mock as I2cMock, Transaction as I2cTransaction};
-    /// # let i2c = I2cMock::new(&[I2cTransaction::write_read(0x76, vec![0x1E], vec![]),
+    /// # let i2c = I2cMock::new(&[I2cTransaction::write(0x76, vec![0x1E]),
     /// #     I2cTransaction::write_read(0x76, vec![0xA0], vec![0x6F, 0xA6]),
     /// #     I2cTransaction::write_read(0x76, vec![0xA2], vec![0x8E, 0x00]),
     /// #     I2cTransaction::write_read(0x76, vec![0xA4], vec![0x4F, 0x68]),
@@ -541,13 +596,13 @@ impl<I2C: I2cMarker> Initialised<I2C> {
     /// #     I2cTransaction::write_read(0x76, vec![0xA8], vec![0x66, 0x22]),
     /// #     I2cTransaction::write_read(0x76, vec![0xAA], vec![0x66, 0x22]),
     /// #     I2cTransaction::write_read(0x76, vec![0xAC], vec![0x66, 0x22]),
-    /// #     I2cTransaction::write_read(0x76, vec![0b0101_1000], vec![]),
+    /// #     I2cTransaction::write(0x76, vec![0b0101_1000]),
     /// #     I2cTransaction::write_read(0x76, vec![0x00], vec![0x67,0xFE,0xB6]),
-    /// #     I2cTransaction::write_read(0x76, vec![0b0100_1000], vec![]),
+    /// #     I2cTransaction::write(0x76, vec![0b0100_1000] ),
     /// #     I2cTransaction::write_read(0x76, vec![0x00], vec![0x4B,0xA7,0xE3]),
     /// # ]);
-    /// use ms5837::OverSamplingRatio;
-    /// let pressure_sensor = ms5837::new(i2c);
+    /// use ms5837::{OverSamplingRatio, mock_utils::SleepNop};
+    /// let pressure_sensor = ms5837::new(i2c, SleepNop);
     /// let mut pressure_sensor = pressure_sensor.init().unwrap();
     /// println!(
     ///     "{:?}",
@@ -559,7 +614,7 @@ impl<I2C: I2cMarker> Initialised<I2C> {
     pub fn read_temperature_and_pressure(
         &mut self,
         over_sampling_ratio: OverSamplingRatio,
-    ) -> Result<TemperaturePressure, SensorError<I2C::Error>> {
+    ) -> Result<TemperaturePressure, SensorError<<I2C as WriteRead>::Error>> {
         // Based on figures 9 and 10 from the datasheet.
         let temperature = self.read_raw_temperature(over_sampling_ratio)?;
         let pressure = self.read_raw_pressure(over_sampling_ratio)?;
@@ -577,7 +632,7 @@ impl<I2C: I2cMarker> Initialised<I2C> {
     /// ```rust
     /// # // NOTE: Use real i2c instance for your app.
     /// # use embedded_hal_mock::i2c::{Mock as I2cMock, Transaction as I2cTransaction};
-    /// # let i2c = I2cMock::new(&[I2cTransaction::write_read(0x76, vec![0x1E], vec![]),
+    /// # let i2c = I2cMock::new(&[I2cTransaction::write(0x76, vec![0x1E]),
     /// #     I2cTransaction::write_read(0x76, vec![0xA0], vec![0x6F, 0xA6]),
     /// #     I2cTransaction::write_read(0x76, vec![0xA2], vec![0x8E, 0x00]),
     /// #     I2cTransaction::write_read(0x76, vec![0xA4], vec![0x4F, 0x68]),
@@ -585,11 +640,11 @@ impl<I2C: I2cMarker> Initialised<I2C> {
     /// #     I2cTransaction::write_read(0x76, vec![0xA8], vec![0x66, 0x22]),
     /// #     I2cTransaction::write_read(0x76, vec![0xAA], vec![0x66, 0x22]),
     /// #     I2cTransaction::write_read(0x76, vec![0xAC], vec![0x66, 0x22]),
-    /// #     I2cTransaction::write_read(0x76, vec![0b0101_1000], vec![]),
+    /// #     I2cTransaction::write(0x76, vec![0b0101_1000] ),
     /// #     I2cTransaction::write_read(0x76, vec![0x00], vec![0x67,0xFE,0xB6]),
     /// # ]);
-    /// use ms5837::OverSamplingRatio;
-    /// let pressure_sensor = ms5837::new(i2c);
+    /// use ms5837::{OverSamplingRatio, mock_utils::SleepNop};
+    /// let pressure_sensor = ms5837::new(i2c, SleepNop);
     /// let mut pressure_sensor = pressure_sensor.init().unwrap();
     /// println!(
     ///     "{:?}",
@@ -601,7 +656,7 @@ impl<I2C: I2cMarker> Initialised<I2C> {
     pub fn read_temperature(
         &mut self,
         over_sampling_ratio: OverSamplingRatio,
-    ) -> Result<f32, SensorError<I2C::Error>> {
+    ) -> Result<f32, SensorError<<I2C as WriteRead>::Error>> {
         let raw_temperature = self.read_raw_temperature(over_sampling_ratio)?;
         Ok(self.normalise_temperature(raw_temperature))
     }

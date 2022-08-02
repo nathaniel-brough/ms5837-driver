@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+use hal::delay::Delay;
 use hal::prelude::*;
 use hal::{
     gpio::{Alternate, OpenDrain, H8},
@@ -26,8 +27,9 @@ mod tests {
     use defmt::assert;
 
     #[init]
-    fn init() -> Option<I2C> {
+    fn init() -> Option<(I2C, Delay)> {
         let dp = hal::pac::Peripherals::take().unwrap();
+        let cp = hal::pac::CorePeripherals::take().unwrap();
 
         let mut flash = dp.FLASH.constrain();
         let mut rcc = dp.RCC.constrain();
@@ -35,6 +37,7 @@ mod tests {
 
         let clocks = rcc.cfgr.freeze(&mut flash.acr, &mut pwr);
 
+        let delay = Delay::new(cp.SYST, clocks);
         let mut gpioa = dp.GPIOA.split(&mut rcc.ahb2);
 
         let mut scl = gpioa.pa9.into_alternate_open_drain(
@@ -51,35 +54,62 @@ mod tests {
         );
         sda.internal_pull_up(&mut gpioa.pupdr, true);
 
-        Some(I2c::i2c1(
-            dp.I2C1,
-            (scl, sda),
-            Config::new(100.kHz(), clocks),
-            &mut rcc.apb1r1,
+        Some((
+            I2c::i2c1(
+                dp.I2C1,
+                (scl, sda),
+                Config::new(100.kHz(), clocks),
+                &mut rcc.apb1r1,
+            ),
+            delay,
         ))
     }
 
     #[test]
-    fn device_init(i2c: &mut Option<I2C>) {
-        let ms5837 = ms5837::new(i2c.take().unwrap());
+    fn device_init(handle: &mut Option<(I2C, Delay)>) {
+        let (i2c, delay) = handle.take().unwrap();
+        let ms5837 = ms5837::new(i2c, delay);
         let pressure_sensor = ms5837.init().unwrap();
-        *i2c = Some(pressure_sensor.release());
+        *handle = Some(pressure_sensor.release());
     }
 
     #[test]
-    fn pressure_and_temperature(i2c: &mut Option<I2C>) {
-        let ms5837 = ms5837::new(i2c.take().unwrap());
+    fn pressure_and_temperature(handle: &mut Option<(I2C, Delay)>) {
+        let (i2c, delay) = handle.take().unwrap();
+        let ms5837 = ms5837::new(i2c, delay);
         let mut pressure_sensor = ms5837.init().unwrap();
-        let temperature_and_pressure = pressure_sensor
+        let ms5837::TemperaturePressure {
+            temperature,
+            pressure,
+        } = pressure_sensor
             .read_temperature_and_pressure(ms5837::OverSamplingRatio::R4096)
             .unwrap();
-        // This set of tests assume that you are;
-        // 1. Above water
-        // 2. Below 5km altitude
-        // 3. Not freezing cold outside.
-        assert!(temperature_and_pressure.temperature > 0.0);
-        assert!(temperature_and_pressure.pressure > 1050.0);
-        assert!(temperature_and_pressure.pressure < 400.0);
-        *i2c = Some(pressure_sensor.release());
+        defmt::println!(
+            "Temperature: {:?} deg C, Pressure: {:?} mBar",
+            temperature,
+            pressure
+        );
+        // Assuming temperature is above 0deg C
+        assert!(temperature > 0.0);
+        // Max operating temperature.
+        assert!(temperature < 85.0);
+        // Assuming this test is not conducted below the water surface.
+        assert!(pressure < 1050.0);
+        // Assuming this test is not conducted above 5000m altitude.
+        assert!(pressure > 400.0);
+
+        *handle = Some(pressure_sensor.release());
+    }
+
+    #[test]
+    fn over_sampling_ratio_conversion_time(handle: &mut Option<(I2C, Delay)>) {
+        let (i2c, delay) = handle.take().unwrap();
+        let ms5837 = ms5837::new(i2c, delay);
+        let mut pressure_sensor = ms5837.init().unwrap();
+        use ms5837::OverSamplingRatio::*;
+        for r in [R256, R512, R1024, R2048, R4096].iter() {
+            let _ = pressure_sensor.read_temperature_and_pressure(*r).unwrap();
+        }
+        *handle = Some(pressure_sensor.release());
     }
 }
