@@ -13,7 +13,7 @@ name = "integration"
 harness = false
 
 [dependencies]
-cortex-m = "0.7.5"
+cortex-m = "0.7.6"
 cortex-m-rt = "0.7.1"
 defmt = "0.3.2"
 defmt-rtt = "0.3.2"
