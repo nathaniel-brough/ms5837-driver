@@ -51,7 +51,7 @@ mod c_implementation {
     extern "C" {
         // C implementation described in the data sheet.
         // This is test only to validate the rust implementation.
-        pub fn crc4(buffer: *const u16) -> u8;
+        pub fn crc4(buffer: *mut u16) -> u8;
     }
 }
 
@@ -189,7 +189,7 @@ mod tests {
 
     #[test]
     fn crc4() {
-        let c_input_buffer = [0xABCDu16, 1, 2, 3, 4, 5, 6, 7];
+        let mut c_input_buffer = [0xABCDu16, 1, 2, 3, 4, 5, 6, 7];
 
         let mut input_buffer = c_input_buffer.clone();
         // The C implementation zeroes the first 4bits of the buffer as that
@@ -201,7 +201,7 @@ mod tests {
 
         let c_impl_crc: u8;
         unsafe {
-            c_impl_crc = c_implementation::crc4(c_input_buffer.as_ptr());
+            c_impl_crc = c_implementation::crc4(c_input_buffer.as_mut_ptr());
         }
         // Also note that the c implementation requires a padding word that rust
         // does not require.
