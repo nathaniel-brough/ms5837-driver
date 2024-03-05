@@ -25,7 +25,7 @@ embedded-hal = "0.2.7"
 path = ".."
 
 [dev-dependencies]
-defmt-test = "0.3.0"
+defmt-test = "0.3.2"
 
 # cargo build/run
 [profile.dev]
