@@ -10,7 +10,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-embedded-hal-fuzz = "0.1.2"
+embedded-hal-fuzz = "1.0.0"
 
 [dependencies.ms5837]
 path = ".."
